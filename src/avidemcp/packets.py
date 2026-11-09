@@ -17,7 +17,7 @@ from typing import NamedTuple
 
 import av
 
-from .media import video
+from .media import rate, video
 
 
 class Pkt(NamedTuple):
@@ -48,7 +48,7 @@ MUTE: Warp = ()
 def index(path: str | Path) -> Src:
     """Demux the first video stream once (no decoding) into a packet table.
 
-    step = one frame in time-base ticks at the stream's nominal (guessed) rate, kept exact
+    step = one frame in time-base ticks at the stream's nominal rate (media.rate), kept exact
     (33.33 ticks at 30 fps in a 1 ms time base); timestamps are rounded only when emitted.
     """
     with av.open(str(path)) as c:
@@ -56,10 +56,10 @@ def index(path: str | Path) -> Src:
         if v is None:
             raise ValueError(f"{path}: no video stream")
         pkts = tuple(_pkt(p) for p in c.demux(v) if p.size)
-        rate = v.guessed_rate or v.average_rate
-        if not pkts or not rate:
+        fps = rate(v, (p.pts for p in pkts))
+        if not pkts or not fps:
             raise ValueError(f"{path}: no video packets or unknown frame rate")
-        return Src(pkts, v.time_base, 1 / (rate * v.time_base), bool(v.codec_context.has_b_frames))
+        return Src(pkts, v.time_base, 1 / (fps * v.time_base), bool(v.codec_context.has_b_frames))
 
 
 def _pkt(p: av.Packet) -> Pkt:
