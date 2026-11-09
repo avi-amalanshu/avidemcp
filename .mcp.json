@@ -1,0 +1,9 @@
+{
+  "mcpServers": {
+    "avidemcp": {
+      "type": "stdio",
+      "command": "uv",
+      "args": ["run", "avidemcp"]
+    }
+  }
+}
