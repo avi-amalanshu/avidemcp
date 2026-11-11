@@ -1,85 +1,86 @@
 # avidemcp
 
-A headless MCP server for editing video files on your machine. Claude, or any MCP client, can
-inspect clips, trim, cut, speed up, slow down, reverse, crop, scale and join them, and edit their
-compressed frames directly the way Avidemux's copy mode allows (which is how datamoshing is done).
-A `preview` tool returns contact-sheet images, so the agent can see each result. The long-term goal
-is Avidemux's feature set.
+avidemcp is a headless MCP server that edits video files on your machine. Through it, Claude or any
+other MCP client can inspect clips and trim, cut, speed up, slow down, reverse, crop, scale and join
+them. It can also edit a clip's compressed frames directly, as Avidemux does in copy mode; that is
+how datamoshing is done. A `preview` tool returns contact sheets of frames, so the agent can look at
+each result. The long-term goal is to match Avidemux's features.
 
 ## Requirements
 
-You only install **two things yourself**: `uv` and `git`. uv fetches Python and everything else,
-including FFmpeg.
+You install only `uv` and `git` yourself. uv fetches Python and everything else, including FFmpeg.
 
 | Requirement | Version | Notes |
 |---|---|---|
-| [uv](https://docs.astral.sh/uv/) | any recent (tested 0.13) | Installs Python and the deps; runs the server |
-| Python | 3.12 – 3.14 | uv downloads one if you don't have it |
-| `mcp` (Python SDK) | `>=2.3,<3` | 2.x API (`MCPServer`); 1.x will not work |
-| `av` (PyAV) | `>=19,<20` | Wheels bundle their own FFmpeg libraries |
-| `imageio-ffmpeg` | `>=0.8,<0.9` | Ships a static `ffmpeg` binary (FFmpeg 9.0) |
-| `numpy` | `>=2,<3` | Contact-sheet tiling |
-| Claude Code | any version with MCP support | Or Claude Desktop / any stdio MCP client |
+| [uv](https://docs.astral.sh/uv/) | any recent version (tested with 0.13) | installs Python and the dependencies, and runs the server |
+| Python | 3.12 to 3.14 | uv downloads one if you don't have it |
+| `mcp` (Python SDK) | `>=2.3,<3` | the server uses the 2.x API (`MCPServer`); 1.x won't work |
+| `av` (PyAV) | `>=19,<20` | its wheels bundle their own FFmpeg libraries |
+| `imageio-ffmpeg` | `>=0.8,<0.9` | ships a static `ffmpeg` binary (FFmpeg 9.0) |
+| `numpy` | `>=2,<3` | tiles the contact sheets |
+| Claude Code | any version with MCP support | Claude Desktop or any other stdio MCP client also works |
 
-Exact tested versions are pinned in `uv.lock` (av 19.0.2, imageio-ffmpeg 0.8.1, mcp 2.3.0,
-numpy 2.5.4).
+`uv.lock` pins the versions that the tests ran on: av 19.0.2, imageio-ffmpeg 0.8.1, mcp 2.3.0 and
+numpy 2.5.4.
 
-**No system FFmpeg is needed.** The server picks the `ffmpeg` binary in this order:
-1. `$AVIDEMCP_FFMPEG`
+You don't need FFmpeg installed on your system. The server uses the first `ffmpeg` binary it finds
+in this order:
+
+1. the path in `$AVIDEMCP_FFMPEG`
 2. `ffmpeg` on your `PATH`
-3. the bundled build
+3. the build bundled with imageio-ffmpeg
 
-If you bring your own, it needs these:
+If you bring your own, it needs the following:
 
-| What | Needed for |
+| Component | Needed for |
 |---|---|
-| FFmpeg ≥ 6 | everything (9.0 is the tested version) |
-| `libx264` | every re-encoding tool |
-| `mpeg4` encoder (always built in) | `prepare` |
-| `zscale` (libzimg) | HDR tone-mapping only; without it HDR is passed through untouched |
+| FFmpeg 6 or later | everything (9.0 is the tested version) |
+| `libx264` | every tool that re-encodes |
+| the `mpeg4` encoder (always built in) | `prepare` |
+| `zscale` (libzimg) | converting HDR to SDR; without it, HDR passes through unchanged |
 
 ### Platforms
 
-Prebuilt wheels exist for all dependencies on:
+Every dependency has prebuilt wheels for these platforms:
 
 | Platform | Status |
 |---|---|
-| macOS Apple Silicon (14+) | **tested** |
-| macOS Intel (11+) | expected to work |
-| Linux x86_64 / aarch64, glibc 2.28+ | expected to work |
-| Windows x64 / ARM64 | expected to work |
-| Alpine (musl) / 32-bit ARM | install a system `ffmpeg` and set `AVIDEMCP_FFMPEG`; imageio-ffmpeg has no binary there |
+| macOS on Apple Silicon (14+) | tested |
+| macOS on Intel (11+) | expected to work |
+| Linux x86_64 or aarch64, glibc 2.28+ | expected to work |
+| Windows x64 or ARM64 | expected to work |
+| Alpine (musl), 32-bit ARM | install a system `ffmpeg` and set `AVIDEMCP_FFMPEG`, because imageio-ffmpeg has no binary for these |
 
 ## Use it with Claude Code on your laptop
 
-**1. Install uv** (skip if `uv --version` works):
+1. Install uv, unless `uv --version` already works:
 
-```bash
-curl -LsSf https://astral.sh/uv/install.sh | sh        # macOS / Linux
-# or: brew install uv
-# Windows: powershell -c "irm https://astral.sh/uv/install.ps1 | iex"
-```
+   ```bash
+   curl -LsSf https://astral.sh/uv/install.sh | sh        # macOS / Linux
+   # or: brew install uv
+   # Windows: powershell -c "irm https://astral.sh/uv/install.ps1 | iex"
+   ```
 
-**2. Clone and install** (downloads ~100 MB of wheels, including FFmpeg):
+2. Clone the repository and install it. This downloads about 100 MB of wheels, FFmpeg included.
 
-```bash
-git clone https://github.com/avi-amalanshu/avidemcp.git
-cd avidemcp
-uv sync
-uv run pytest -q          # optional: ~3 s smoke test on synthetic clips
-```
+   ```bash
+   git clone https://github.com/avi-amalanshu/avidemcp.git
+   cd avidemcp
+   uv sync
+   uv run pytest -q          # optional: a 3 s test on generated clips
+   ```
 
-**3. Register the server with Claude Code.** Pick one of:
+3. Register the server with Claude Code in one of two ways. To use it in this project only, start
+   `claude` inside the `avidemcp` directory; Claude Code reads the bundled `.mcp.json` and asks you
+   once to approve the server. To use it in every project, run this from anywhere, with an
+   absolute path:
 
-- **This project only.** Start `claude` inside the `avidemcp` directory. It reads the bundled
-  `.mcp.json` and asks you to approve the server once.
-- **Every project.** Run this from anywhere, with an absolute path:
+   ```bash
+   claude mcp add --scope user avidemcp -- uv run --directory /absolute/path/to/avidemcp avidemcp
+   ```
 
-  ```bash
-  claude mcp add --scope user avidemcp -- uv run --directory /absolute/path/to/avidemcp avidemcp
-  ```
-
-Check with `claude mcp list` or `/mcp` inside a session. Then just ask, for example:
+To check that the server is registered, run `claude mcp list`, or `/mcp` inside a session. Then ask
+for an edit, for example:
 
 > Trim ~/Movies/clip.mov to 0:12-0:40, crop it to 4:5 for Instagram, and show me a preview.
 
@@ -87,7 +88,7 @@ Check with `claude mcp list` or `/mcp` inside a session. Then just ask, for exam
 
 > Make a boomerang from ~/Movies/wave.mov that loops seamlessly.
 
-**Claude Desktop** works the same way. Add this to `claude_desktop_config.json`:
+Claude Desktop needs the same command. Add this to `claude_desktop_config.json`:
 
 ```json
 {
@@ -100,56 +101,64 @@ Check with `claude mcp list` or `/mcp` inside a session. Then just ask, for exam
 }
 ```
 
-If the client can't find `uv`, as GUI apps sometimes don't inherit your shell `PATH`, use its
-full path (`which uv`) as `command`.
+GUI apps sometimes don't inherit your shell's `PATH`. If the client can't find `uv`, put the full
+path from `which uv` in `command`.
 
-### Things to know
+### Files, names and long jobs
 
-- **Files stay local.** The server reads and writes files on your machine and never uploads
-  anything. Tools never modify their input.
-- **Output names.** Outputs land beside the input as `<stem>.<op>.<ext>` unless you pass `output`.
-  Existing files are never overwritten: `.2`, `.3`, … are appended.
-- **Long renders.** These report progress. For very long jobs, raise Claude Code's MCP timeout,
-  e.g. `MCP_TOOL_TIMEOUT=1800000 claude` (30 min).
+The server reads and writes files only on your machine and never uploads anything. No tool changes
+its input file.
+
+Unless you pass `output`, each tool writes its result beside the input as `<stem>.<op>.<ext>`, for
+example `clip.trim.mp4`. If that name is taken, the server appends `.2`, `.3` and so on, so it never
+overwrites an existing file this way.
+
+Tools that re-encode report their progress. A long job can take longer than Claude Code's MCP
+timeout; to raise the timeout to 30 minutes, start Claude Code with
+`MCP_TOOL_TIMEOUT=1800000 claude`.
 
 ## Tools
 
 | Tool | What it does |
 |---|---|
-| `probe` | Duration, streams, frame rate, frame count, I-frame (keyframe) times |
-| `preview` | PNG contact sheet of evenly spaced frames |
-| `bake` | Re-encode any file to a plain H.264/AAC MP4 |
-| `prepare` | Re-encode to MPEG-4 Part 2 with only I- and P-frames and I-frames where you choose, so `drop_iframes` and `repeat_pframes` can edit it |
-| `trim` / `cut` | Keep / remove a range. `mode="exact"` re-encodes frame-accurately. `mode="copy"` is lossless and snaps to keyframes; `snap=false` cuts exactly and breaks references on purpose. |
-| `speed` | Faster or slower. Audio can keep its pitch, follow the speed (`tape`), or be dropped. `mode="copy"` only rescales timestamps. |
-| `reverse` | Play backwards, in chunks, so long and 4K clips fit in RAM |
-| `render` | Chain `trim` / `cut` / `speed` / `reverse` / `crop` / `scale` in one decode/encode pass |
-| `concat` | Join clips in one encode, like Avidemux's Append. Each clip runs its own ops, then all are fitted to one size and frame rate. Returns the junction times. |
-| `drop_iframes` | Delete I-frames in a range without decoding, so later frames predict from the wrong picture |
-| `repeat_pframes` | Replay a P-frame (or a run of them) N times without decoding, so its motion builds up |
+| `probe` | reports duration, streams, frame rate, frame count and the times of I-frames (keyframes) |
+| `preview` | returns a PNG contact sheet of evenly spaced frames |
+| `bake` | re-encodes any file to an ordinary H.264/AAC MP4 |
+| `prepare` | re-encodes to MPEG-4 Part 2 with only I- and P-frames and with I-frames where you choose, so that `drop_iframes` and `repeat_pframes` can edit the file |
+| `trim`, `cut` | keep or remove one range. `mode="exact"` re-encodes and cuts on the exact frame. `mode="copy"` doesn't re-encode, so it loses no quality, but it moves the cut to a keyframe; with `snap=false` it cuts exactly and leaves the next frames without their reference picture |
+| `speed` | plays a clip faster or slower. The audio can keep its pitch, change pitch with the speed (`tape`), or be dropped. `mode="copy"` only rescales the timestamps |
+| `reverse` | plays a clip backwards, in chunks, so that long and 4K clips fit in memory |
+| `render` | runs a chain of `trim`, `cut`, `speed`, `reverse`, `crop` and `scale` with one decode and one encode |
+| `concat` | joins clips in one encode, like Avidemux's Append. Each clip runs its own ops first, and then all of them are fitted to one size and frame rate. It returns the times where the clips meet |
+| `drop_iframes` | deletes the I-frames in a range without decoding, so the frames after each one are built from the wrong picture |
+| `repeat_pframes` | plays one P-frame, or a run of them, several times without decoding, so its motion adds up |
 
-## Docs
+## Documentation
 
-- [AGENTS.md](AGENTS.md) is the reference for agents: the rules every tool shares, a line per tool,
-  and an index of [docs/](docs/), which has one page per tool with its full syntax and when to use
-  it. The pages form a binary tree of one-line summaries, so an agent can keep the root in context
-  and open only the page it needs.
-- [EXAMPLES.md](EXAMPLES.md) chains the tools into finished effects: editing recipes, and a
-  [datamoshing tutorial](EXAMPLES.md#tutorial-an-i-frame-transition-between-two-clips) with the
-  settings and lessons from real footage.
-- The server publishes all of these files as MCP resources (`avidemcp://docs/AGENTS.md`, ...), and
-  its built-in instructions point agents to them, so agents working in any folder can read them.
+[AGENTS.md](AGENTS.md) is the reference for agents. It lists the rules that all tools share, gives
+one line per tool, and indexes [docs/](docs/), which has a page for each tool with its full syntax
+and advice on when to use it. The pages form a binary tree in which every node has a one-line
+summary, so an agent can keep the top of the tree in its context and open only the pages it needs.
+
+[EXAMPLES.md](EXAMPLES.md) shows how to combine the tools. It has editing recipes and a
+[datamoshing tutorial](EXAMPLES.md#tutorial-an-i-frame-transition-between-two-clips), along with
+the settings and lessons from datamoshing real footage.
+
+The server publishes all of these files as MCP resources, such as `avidemcp://docs/AGENTS.md`. Its
+built-in instructions tell agents to read them, so an agent can use them from any folder.
 
 ## How it works
 
-Two engines, mirroring Avidemux's split between *Copy* output and encoder output:
+avidemcp has two engines, which follow Avidemux's split between copy output and encoder output.
 
-- **Packet engine** (`packets.py`, PyAV). Demuxes once into a packet table. Edits are pure
-  functions on a plan of `(source packet, output timestamps)`, and one streaming remux writes it.
-  Datamosh ops and copy-mode trim/cut live here: no decoding, no quality loss.
-- **Filter engine** (`ops.py`, `graph.py`, `jobs.py`; the FFmpeg command-line tool). Ops are
-  pydantic models, each compiled into filtergraph lines by one `graph.link` rule; `render` runs a
-  chain of them in one pass. Adding a feature means one model plus one rule.
+The packet engine (`packets.py`) uses PyAV. It reads a file's packets once into a table, without
+decoding them. Each edit is a pure function on a plan that lists which source packet plays at which
+output time, and one streaming pass writes the plan out. `drop_iframes`, `repeat_pframes` and the
+copy modes of `trim` and `cut` run here, so they lose no quality.
+
+The filter engine (`ops.py`, `graph.py` and `jobs.py`) runs the FFmpeg command-line tool. Each op is
+a pydantic model, and one `graph.link` rule turns it into lines of an FFmpeg filter graph. `render`
+runs a chain of ops in one pass. A new op therefore needs one model and one rule.
 
 ## Development
 
@@ -157,13 +166,15 @@ Two engines, mirroring Avidemux's split between *Copy* output and encoder output
 uv sync && uv run pytest -q
 ```
 
-Tests generate their media with FFmpeg at run time; no video files are committed.
+The tests generate their own media with FFmpeg when they run, so the repository contains no video
+files.
 
-## Roadmap toward Avidemux parity
+## Roadmap toward Avidemux's features
 
-- **Editing:** project files (a saved `render` op list)
-- **Video filters:** rotate/flip, deinterlace, denoise/sharpen, color, fades, subtitles,
-  logo overlay, frame-rate change
-- **Audio:** gain, normalize, delay, replace, external tracks
-- **Output:** encoder choice (x265, VP9, AV1, ProRes) and settings, container choice
-- **Datamosh:** packet-level reverse/shuffle moshes, moshing H.264 directly
+| Area | Planned |
+|---|---|
+| Editing | project files (a saved list of `render` ops) |
+| Video filters | rotate and flip, deinterlace, denoise and sharpen, color, fades, subtitles, logo overlay, frame-rate change |
+| Audio | gain, normalization, delay, replacing a track, external tracks |
+| Output | choice of encoder (x265, VP9, AV1, ProRes) and its settings, choice of container |
+| Datamoshing | reversing and shuffling packets, moshing H.264 directly |
