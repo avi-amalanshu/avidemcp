@@ -3,6 +3,8 @@
 each tool: resolve paths -> run an engine (PyAV in a worker thread, ffmpeg as a subprocess)
 -> return {output, ...facts}. Failures surface as ToolError carrying the cause's message,
 because mcp 2.x hides the text of any other exception from the client.
+The agent docs (AGENTS.md, EXAMPLES.md, docs/) are served as resources, so clients in any folder
+can read them.
 """
 
 import functools
@@ -14,6 +16,7 @@ import anyio
 from mcp.server import MCPServer
 from mcp.server.mcpserver import Context, Image
 from mcp.server.mcpserver.exceptions import ToolError
+from mcp.server.mcpserver.resources import FileResource
 from pydantic import BaseModel, Field
 
 from . import jobs, media, packets, paths, sheet
@@ -23,17 +26,41 @@ GUIDE = """\
 Video editing and datamoshing on local files. Every tool reads `input` and writes a new file
 (never the input); omit `output` for <stem>.<op>.<ext> beside it. Times are in seconds.
 
-Datamosh: prepare -> probe (I-frame times) -> drop_iframes and/or repeat_pframes -> preview ->
-bake. timing="keep" (default) keeps the duration and the audio in sync; "shift" is the classic
-behaviour (drops shorten, repeats insert, audio is removed).
+Before any multi-step job, read the resource avidemcp://docs/AGENTS.md: the shared rules, one
+reference line per tool, and the index of one doc per tool (avidemcp://docs/<file>) with its full
+syntax and when to use it. avidemcp://docs/EXAMPLES.md chains tools into finished effects.
 
-Edits: trim (keep a range), cut (remove a range), speed, reverse, or render(ops=[...]) to chain
-them (plus crop and scale) in one encode. concat joins clips, each with its own ops, and returns
-the junction times to hand to prepare for a transition mosh. mode="copy" on trim/cut/speed skips
-re-encoding. preview shows any result.
+Inspect: probe (streams, fps, I-frame times), preview (contact sheet of any file).
+Encode: bake (any file to H.264 MP4), prepare (I/P-only MPEG-4 with I-frames where you choose).
+Edit: trim (keep a range), cut (remove one), speed, reverse; mode="copy" on trim/cut/speed skips
+re-encoding. render(ops) chains trim, cut, speed, reverse, crop and scale in one encode; concat
+joins clips, each with its own ops, and returns the junction times.
+Frame-level edits on a prepared file: drop_iframes, repeat_pframes (datamoshing; bake afterwards).
 """
 
+ROOT = Path(__file__).resolve().parents[2]
+
 mcp = MCPServer("avidemcp", instructions=GUIDE)
+
+
+def publish_docs() -> None:
+    """Serve AGENTS.md, EXAMPLES.md and docs/*.md as resources avidemcp://docs/<file name>.
+
+    each file's '# ' line is its title and its first '> ' line its description, so listing the
+    resources shows the tree's one-line summaries. ROOT is the repo checkout that `uv run` installs
+    in editable mode.
+    """
+    for p in [ROOT / "AGENTS.md", ROOT / "EXAMPLES.md", *sorted((ROOT / "docs").glob("*.md"))]:
+        lines = p.read_text().splitlines()
+        title = next((s[2:] for s in lines if s.startswith("# ")), None)
+        gist = next((s[2:] for s in lines if s.startswith("> ")), None)
+        if not (title and gist):
+            raise ValueError(f"{p}: a docs file needs a '# title' line and a '> summary' line")
+        uri = f"avidemcp://docs/{p.name}"
+        mcp.add_resource(FileResource(uri=uri, name=p.name, title=title, description=gist, mime_type="text/markdown", path=p))
+
+
+publish_docs()
 
 Timing = Annotated[Literal["keep", "shift"], Field(description="keep: duration and audio sync preserved; shift: classic, clip length changes and audio is dropped")]
 Mode = Annotated[Literal["exact", "copy"], Field(description="exact: frame-accurate re-encode to H.264; copy: lossless, no re-encode")]

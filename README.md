@@ -1,9 +1,10 @@
 # avidemcp
 
-A headless MCP server for video editing and datamoshing. Claude (or any MCP client) can trim,
-cut, speed up, slow down and reverse clips, and do Avidemux-style datamoshing: removing I-frames
-and repeating P-frames. A `preview` tool returns contact-sheet images, so the agent can see results.
-The long-term goal is Avidemux's feature set.
+A headless MCP server for editing video files on your machine. Claude, or any MCP client, can
+inspect clips, trim, cut, speed up, slow down, reverse, crop, scale and join them, and edit their
+compressed frames directly the way Avidemux's copy mode allows (which is how datamoshing is done).
+A `preview` tool returns contact-sheet images, so the agent can see each result. The long-term goal
+is Avidemux's feature set.
 
 ## Requirements
 
@@ -78,9 +79,13 @@ uv run pytest -q          # optional: ~3 s smoke test on synthetic clips
   claude mcp add --scope user avidemcp -- uv run --directory /absolute/path/to/avidemcp avidemcp
   ```
 
-Check with `claude mcp list` or `/mcp` inside a session. Then just ask:
+Check with `claude mcp list` or `/mcp` inside a session. Then just ask, for example:
 
-> Datamosh ~/Movies/clip.mov at its scene cuts, add a bloom around 5 s, and show me a preview.
+> Trim ~/Movies/clip.mov to 0:12-0:40, crop it to 4:5 for Instagram, and show me a preview.
+
+> Join these three clips into one 1080x1350 video and slow the last two seconds to half speed.
+
+> Make a boomerang from ~/Movies/wave.mov that loops seamlessly.
 
 **Claude Desktop** works the same way. Add this to `claude_desktop_config.json`:
 
@@ -111,39 +116,29 @@ full path (`which uv`) as `command`.
 
 | Tool | What it does |
 |---|---|
-| `probe` | Duration, streams, frame count, I-frame (keyframe) times |
+| `probe` | Duration, streams, frame rate, frame count, I-frame (keyframe) times |
 | `preview` | PNG contact sheet of evenly spaced frames |
-| `prepare` | Mosh-ready copy: MPEG-4 Part 2 with no B-frames and constant frame rate. I-frames go at scene cuts, nowhere, or at given times. HDR is tone-mapped to SDR. `intra_penalty` makes a mosh last: without it, flat areas like snow or sky get repainted within frames. |
-| `drop_iframes` | Delete I-frames in a range, so later motion smears the old picture |
-| `repeat_pframes` | Replay a P-frame (or a run of them) N times: the "bloom" |
-| `bake` | Render any clip, e.g. a mosh, to a normal H.264/AAC MP4 |
-| `trim` / `cut` | Keep / remove a range. `mode="exact"` re-encodes frame-accurately. `mode="copy"` is lossless and snaps to keyframes; `snap=false` breaks references on purpose. |
+| `bake` | Re-encode any file to a plain H.264/AAC MP4 |
+| `prepare` | Re-encode to MPEG-4 Part 2 with only I- and P-frames and I-frames where you choose, so `drop_iframes` and `repeat_pframes` can edit it |
+| `trim` / `cut` | Keep / remove a range. `mode="exact"` re-encodes frame-accurately. `mode="copy"` is lossless and snaps to keyframes; `snap=false` cuts exactly and breaks references on purpose. |
 | `speed` | Faster or slower. Audio can keep its pitch, follow the speed (`tape`), or be dropped. `mode="copy"` only rescales timestamps. |
 | `reverse` | Play backwards, in chunks, so long and 4K clips fit in RAM |
 | `render` | Chain `trim` / `cut` / `speed` / `reverse` / `crop` / `scale` in one decode/encode pass |
 | `concat` | Join clips in one encode, like Avidemux's Append. Each clip runs its own ops, then all are fitted to one size and frame rate. Returns the junction times. |
+| `drop_iframes` | Delete I-frames in a range without decoding, so later frames predict from the wrong picture |
+| `repeat_pframes` | Replay a P-frame (or a run of them) N times without decoding, so its motion builds up |
 
-### Datamosh workflow
+## Docs
 
-```
-prepare(clip.mov)                       -> clip.prep.mkv   (I-frames at hard cuts)
-probe(clip.prep.mkv)                    -> keyframes: [0.0, 4.2, 9.8]
-drop_iframes(clip.prep.mkv, start=4)    -> clip.prep.drop.mkv
-repeat_pframes(..., at=5.0, times=40)   -> ...bloom.mkv
-preview(...)                            -> look at it
-bake(...)                               -> ...bake.mp4
-```
-
-To mosh **two clips** into each other:
-1. `concat` them; it returns the junction times.
-2. `prepare(keyframes=[junction], intra_penalty=300)`.
-3. `drop_iframes` at the junction, so the second clip's motion moves the first clip's last frame.
-
-Timing modes:
-- **`timing="keep"`** (default) preserves duration and audio sync. A dropped I-frame becomes a
-  one-frame hold, and repeated P-frames overwrite the frames after them.
-- **`timing="shift"`** is the classic behaviour. Drops shorten the clip, repeats insert frames,
-  and the audio is removed.
+- [AGENTS.md](AGENTS.md) is the reference for agents: the rules every tool shares, a line per tool,
+  and an index of [docs/](docs/), which has one page per tool with its full syntax and when to use
+  it. The pages form a binary tree of one-line summaries, so an agent can keep the root in context
+  and open only the page it needs.
+- [EXAMPLES.md](EXAMPLES.md) chains the tools into finished effects: editing recipes, and a
+  [datamoshing tutorial](EXAMPLES.md#tutorial-an-i-frame-transition-between-two-clips) with the
+  settings and lessons from real footage.
+- The server publishes all of these files as MCP resources (`avidemcp://docs/AGENTS.md`, ...), and
+  its built-in instructions point agents to them, so agents working in any folder can read them.
 
 ## How it works
 
