@@ -169,12 +169,38 @@ uv sync && uv run pytest -q
 The tests generate their own media with FFmpeg when they run, so the repository contains no video
 files.
 
-## Roadmap toward Avidemux's features
+## Roadmap
+
+### Toward Avidemux's features
+
+These features exist in Avidemux 2.8 and are missing here.
 
 | Area | Planned |
 |---|---|
-| Editing | project files (a saved list of `render` ops) |
-| Video filters | rotate and flip, deinterlace, denoise and sharpen, color, fades, subtitles, logo overlay, frame-rate change |
-| Audio | gain, normalization, delay, replacing a track, external tracks |
-| Output | choice of encoder (x265, VP9, AV1, ProRes) and its settings, choice of container |
-| Datamoshing | reversing and shuffling packets, moshing H.264 directly |
+| Output | a choice of video encoder (copy, H.264, H.265, MPEG-4 ASP, VP9, AV1, FFV1, HuffYUV, ProRes, DNxHD) and of rate control (quality level, target bitrate, two passes); a choice of audio encoder (copy, AAC, MP3, Opus, Vorbis, AC3, FLAC, PCM, none) and bitrate; a choice of container (MP4, MKV, WebM, MOV, AVI, MPEG-TS), with a check that the codecs fit it. This replaces the fixed H.264 + AAC + MP4 output of every tool that re-encodes. |
+| Copy mode | `concat` without re-encoding when the streams match; keeping several ranges in one copy pass; copying the audio while the video is re-encoded |
+| Audio | choosing a track or keeping all of them; adding or replacing a track from a file; delaying the audio to fix A/V sync; gain and normalization; mixdown to stereo or mono; resampling |
+| Video filters | rotating by 90 or 180 degrees or by any angle; flipping and mirroring; borders, and resizing with padding to fit a size; fades in, out and through; brightness, contrast, saturation, hue, color balance and 3D LUTs; deinterlacing, inverse telecine and removing duplicate frames; denoising, sharpening and debanding; logo overlay and removal; burned-in subtitles; blurring a region; zoom; image stabilization; applying any filter to a time range only |
+| Frame rate | converting to a new frame rate, up or down, by dropping and repeating frames, by blending neighboring frames, or by motion interpolation (Avidemux's "Resample FPS") |
+| Chroma key | replacing a green screen with an image |
+| Tools | saving one full-resolution frame as an image; finding black frames and scene cuts; listing the time and type of every frame |
+| Projects | saving and reloading an edit as a list of `render` ops |
+
+### Other planned features
+
+These features go beyond Avidemux.
+
+| Feature | What it adds |
+|---|---|
+| Motion blur | blur from averaging motion-interpolated frames between the real ones, as a longer camera shutter would; it works with or without lowering the frame rate. Avidemux's blend mode averages only the existing frames, which leaves ghosts on fast motion. |
+| Keying onto video | chroma key with another clip as the background, and removing green spill from the edges |
+| Transitions | crossfades, dissolves and wipes at the junctions of `concat`, with the audio crossfaded to match |
+| Layering | picture-in-picture, split screens, and grids of different clips playing together |
+| Text | titles and captions drawn on the video between chosen times |
+| Speed ramps | speed that changes smoothly over time, and freeze frames that hold one frame for a set time |
+| Stills | turning an image into a clip, with an optional slow pan and zoom |
+| Aspect conversion | fitting a clip to a new aspect ratio by placing it over a blurred, enlarged copy of itself |
+| Audio mixing | background music that gets quieter under speech; audio fades; finding and removing silence; normalizing loudness to a platform's target |
+| GIF export | GIFs that use a palette generated from the clip, for better colors |
+| Analysis | per-frame motion from the decoder's motion vectors, to find frames worth repeating or cutting on; a difference score (such as SSIM) between two frames, to check loop seams and compare versions |
+| Frame-level edits | reversing or shuffling the order of compressed frames; running `drop_iframes` and `repeat_pframes` on H.264 files without `prepare` |
