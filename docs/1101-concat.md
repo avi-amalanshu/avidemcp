@@ -24,7 +24,8 @@ concat {"clips": [{"input": "a.mov"},
 
 1. Its own `ops` run, exactly as in `render` ([1100-render.md](1100-render.md)).
 2. It is scaled to cover `width` x `height` and centre-cropped to fit.
-3. It is set to the first clip's frame rate and to a whole number of frames.
+3. It is set to the first clip's frame rate, after the first clip's ops (an `fps` op there sets the
+   rate of the whole output), and to a whole number of frames.
 4. Its audio becomes 48 kHz stereo; a clip without audio gets silence.
 
 Then all the clips are joined in one H.264/AAC MP4 encode.

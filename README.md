@@ -6,7 +6,7 @@ register the server, you can ask Claude to edit a video, and Claude calls avidem
 the work. The server has no user interface of its own.
 
 The tools inspect clips, trim them, cut ranges out of them, change their speed, play them
-backwards, crop and scale them, and join them. They can also edit a clip's compressed frames
+backwards, crop and scale them, change their frame rate, add motion blur, and join them. They can also edit a clip's compressed frames
 without decoding them, as the free video editor Avidemux does in its copy mode. Datamoshing works
 this way too. In a datamosh, compressed frames are deleted or repeated, so that the motion of one
 shot drags the picture of another.
@@ -147,7 +147,7 @@ time limit for MCP tools. To raise the limit to 30 minutes, start Claude Code wi
 | `cut` | removes one range of a clip and joins the parts on either side of it |
 | `speed` | plays a clip faster or slower; the audio can keep its pitch, change pitch with the speed, or be dropped |
 | `reverse` | plays a clip backwards, a few seconds at a time, so that long and 4K clips fit in memory |
-| `render` | applies a list of edits to one file with a single re-encode; the edits are trim, cut, speed, reverse, crop and scale |
+| `render` | applies a list of edits to one file with a single re-encode; the edits are trim, cut, speed, reverse, crop, scale, frame rate conversion and motion blur |
 | `concat` | joins clips with a single re-encode, like Avidemux's Append command; each clip can have its own list of edits, and the result gives the time where each clip starts |
 | `bake` | re-encodes any file to an ordinary MP4 with H.264 video and AAC audio |
 | `prepare` | re-encodes a clip so that it has only I-frames and P-frames, with I-frames only at the times you choose |
@@ -244,8 +244,6 @@ Avidemux 2.8 has the following features, and avidemcp doesn't have them yet.
   - zooming in
   - stabilizing shaky footage
   - applying any filter to one range of time only
-- Converting a clip to a higher or lower frame rate. The conversion would drop and repeat frames,
-  blend neighboring frames, or use motion interpolation. Avidemux calls this filter Resample FPS.
 - Chroma keying, which replaces a green screen with a still image.
 - Small tools that save one frame as an image at full resolution, find black frames and scene cuts,
   and list the time and type of every frame.
@@ -256,9 +254,6 @@ Avidemux 2.8 has the following features, and avidemcp doesn't have them yet.
 
 These features go beyond what Avidemux does.
 
-- Motion blur that averages motion-interpolated frames between the real ones, the way a longer
-  camera shutter blurs motion. It would work whether or not the frame rate goes down. Avidemux's
-  blend mode averages only the existing frames, which leaves ghost images on fast motion.
 - Chroma keying with a video as the background, and removal of the green that spills onto the edges
   of the subject.
 - Transitions where `concat` joins two clips: crossfades, dissolves and wipes, with the audio

@@ -59,4 +59,23 @@ class Scale(BaseModel):
     height: int | None = Field(None, gt=0, multiple_of=2)
 
 
-Op = Annotated[Trim | Cut | Speed | Reverse | Crop | Scale, Field(discriminator="op")]
+class Fps(BaseModel):
+    """Convert to `rate` frames per second, like Avidemux's Resample FPS."""
+
+    op: Literal["fps"]
+    rate: float = Field(gt=0, le=1000, description="23.976, 29.97, 59.94 and 119.88 mean the NTSC rates 24000/1001 etc.")
+    method: Literal["drop", "blend", "motion"] = Field(
+        "drop", description="drop: drop or repeat frames; blend: cross-fade neighbouring frames; motion: motion-compensated interpolation (slow)"
+    )
+
+
+class MotionBlur(BaseModel):
+    """Blur motion like a camera shutter open for `shutter` degrees of each frame interval."""
+
+    op: Literal["motion_blur"]
+    shutter: float = Field(180, gt=0, le=360, description="shutter angle: 180 = open half of each frame interval, 360 = all of it")
+    samples: int = Field(8, ge=2, le=64, description="interpolated frames per frame interval; shutter / 360 of them are averaged")
+    rate: float | None = Field(None, gt=0, le=1000, description="output frame rate; omit to keep the current one")
+
+
+Op = Annotated[Trim | Cut | Speed | Reverse | Crop | Scale | Fps | MotionBlur, Field(discriminator="op")]

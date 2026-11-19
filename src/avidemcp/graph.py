@@ -1,21 +1,24 @@
 """Compile decoded-domain ops into one ffmpeg filtergraph.
 
-Pad    = labels of the graph's current video/audio outputs + duration, frame count, frame size
+Pad    = labels of the graph's current video/audio outputs + duration, frame count, frame size,
+         and the frame rate the output is conformed to
 link   = one rule per op: (op, pad, tag, media) --> (graph lines, next pad)
 branch = input k -> head (hdr tone-map) -> its ops in order
-graph  = one branch -> tail (cfr at the source rate, yuv420p)
+graph  = one branch -> tail (cfr at the pad's rate, yuv420p)
 join   = one branch per input -> conform (size, rate, audio format) -> concat
 """
 
+from fractions import Fraction
 from functools import singledispatch
 from typing import NamedTuple
 
 from . import ff
 from .media import Media
-from .ops import Crop, Cut, Op, Reverse, Scale, Speed, Trim
+from .ops import Crop, Cut, Fps, MotionBlur, Op, Reverse, Scale, Speed, Trim
 
 LIMIT = 2 << 30  # bytes of decoded frames reverse may buffer
 TONEMAP = ["zscale=t=linear:npl=100", "format=gbrpf32le", "zscale=p=bt709", "tonemap=tonemap=hable:desat=0", "zscale=t=bt709:m=bt709:r=tv"]
+MCI = "mi_mode=mci:mc_mode=aobmc:me_mode=bidir:vsbmc=1"  # minterpolate: motion-compensated, overlapped blocks
 AUDIO = "aformat=sample_fmts=fltp:sample_rates=48000:channel_layouts=stereo"
 
 
@@ -25,11 +28,20 @@ class Pad(NamedTuple):
     dur: float
     frames: float
     size: tuple[int, int]
+    rate: Fraction
 
 
 def num(x: float) -> str:
     """Plain decimal for ffmpeg args (no exponent, no trailing zeros)."""
     return f"{x:.6f}".rstrip("0").rstrip(".")
+
+
+def rational(fps: float) -> Fraction:
+    """Frame rate as a fraction; 23.976, 29.97, 59.94 and 119.88 snap to the NTSC rates n * 1000/1001."""
+    n = round(fps * 1.001)
+    if fps < 200 and abs(fps * 1.001 - n) < 0.005 and abs(fps - n) > 0.01:
+        return Fraction(n * 1000, 1001)
+    return Fraction(fps).limit_denominator(1000)
 
 
 def chain(src: str, filters: list[str], dst: str) -> str:
@@ -147,9 +159,25 @@ def _(op: Scale, pad: Pad, tag: str, m: Media) -> tuple[list[str], Pad]:
     return [chain(pad.v, [f"scale={op.width}:{height}", "setsar=1"], f"v{tag}")], pad._replace(v=f"v{tag}", size=(op.width, height))
 
 
+@link.register
+def _(op: Fps, pad: Pad, tag: str, m: Media) -> tuple[list[str], Pad]:
+    r = rational(op.rate)
+    vf = {"drop": f"fps={r}", "blend": f"framerate=fps={r}", "motion": f"minterpolate=fps={r}:{MCI}"}[op.method]
+    return [chain(pad.v, [vf], f"v{tag}")], pad._replace(v=f"v{tag}", frames=pad.dur * r, rate=r)
+
+
+@link.register
+def _(op: MotionBlur, pad: Pad, tag: str, m: Media) -> tuple[list[str], Pad]:
+    """Interpolate to `samples` x the output rate, average the frames the shutter spans, keep one per output frame."""
+    r = pad.rate if op.rate is None else rational(op.rate)
+    n = max(1, round(op.samples * op.shutter / 360))
+    vf = [f"minterpolate=fps={r * op.samples}:{MCI}", f"tmix=frames={n}", f"fps={r}"]
+    return [chain(pad.v, vf, f"v{tag}")], pad._replace(v=f"v{tag}", frames=pad.dur * r, rate=r)
+
+
 def branch(m: Media, ops: list[Op], k: int = 0) -> tuple[list[str], Pad]:
     """Input k through its head filters and ops; labels carry k so inputs never collide."""
-    pad = Pad(f"{k}:{m.video.index}", m.audio and f"{k}:{m.audio.index}", m.duration, m.duration * float(m.video.rate), shown(m))
+    pad = Pad(f"{k}:{m.video.index}", m.audio and f"{k}:{m.audio.index}", m.duration, m.duration * float(m.video.rate), shown(m), m.video.rate)
     lines = []
     if hd := head(m):
         lines.append(chain(pad.v, hd, f"hdr{k}"))
@@ -163,7 +191,7 @@ def branch(m: Media, ops: list[Op], k: int = 0) -> tuple[list[str], Pad]:
 def graph(ops: list[Op], m: Media) -> tuple[str, Pad]:
     """ops --> (-filter_complex text, final pad labelled vout / aout)."""
     lines, pad = branch(m, ops)
-    lines.append(chain(pad.v, [f"fps={m.video.rate}", "format=yuv420p"], "vout"))
+    lines.append(chain(pad.v, [f"fps={pad.rate}", "format=yuv420p"], "vout"))
     if pad.a:
         lines.append(chain(pad.a, ["anull"], "aout"))
     return ";".join(lines), pad._replace(v="vout", a=pad.a and "aout")
@@ -173,20 +201,19 @@ def join(parts: list[tuple[Media, list[Op]]], size: tuple[int, int] | None = Non
     """Concatenate inputs, each through its own branch.
 
     every branch is conformed to `size` (default: the first branch's size; scaled to cover, then
-    center-cropped), the first input's frame rate and 48 kHz stereo fltp audio (silence when a
+    center-cropped), the first branch's frame rate (after its ops) and 48 kHz stereo fltp audio (silence when a
     branch has none), then all meet in one concat filter.
     each branch is forced to exactly n = round(dur * fps) frames (fps alone emits n or n + 1
     depending on timestamp phase): clone one extra frame, trim to n; audio padded/trimmed to match.
     Returns (-filter_complex text, pad vout / aout, junctions): junctions are the start times of
     every input after the first, exact frame times by construction.
     """
-    rate = parts[0][0].video.rate
-    fps = float(rate)
-    lines, t, cuts = [], 0.0, []
+    lines, t, cuts, rate = [], 0.0, [], None
     for k, (m, ops) in enumerate(parts):
         more, pad = branch(m, ops, k)
-        size = size or pad.size
+        size, rate = size or pad.size, rate or pad.rate
         w, h = size
+        fps = float(rate)
         n = max(1, round(pad.dur * fps))
         end = num(n / fps)
         fit = [f"scale={w}:{h}:force_original_aspect_ratio=increase", f"crop={w}:{h}", "setsar=1", f"fps={rate}", "tpad=stop_mode=clone:stop=1", f"trim=end_frame={n}", "format=yuv420p"]
@@ -198,4 +225,4 @@ def join(parts: list[tuple[Media, list[Op]]], size: tuple[int, int] | None = Non
         t += n / fps
     n = len(parts)
     lines.append("".join(f"[cv{k}][ca{k}]" for k in range(n)) + f"concat=n={n}:v=1:a=1[vout][aout]")
-    return ";".join(lines), Pad("vout", "aout", t, t * fps, size), cuts
+    return ";".join(lines), Pad("vout", "aout", t, t * fps, size, rate), cuts

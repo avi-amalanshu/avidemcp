@@ -14,6 +14,7 @@ rather than named.
 - [Editing](#editing)
   - [Shorten a long clip without re-encoding](#shorten-a-long-clip-without-re-encoding)
   - [Time-lapse without re-encoding](#time-lapse-without-re-encoding)
+  - [Smooth slow motion and motion blur](#smooth-slow-motion-and-motion-blur)
   - [Reframe to 4:5 and slow only the ending](#reframe-to-45-and-slow-only-the-ending)
   - [Join clips shot in different orientations](#join-clips-shot-in-different-orientations)
   - [Boomerangs, full and partial](#boomerangs-full-and-partial)
@@ -58,6 +59,29 @@ Copy mode keeps every frame and only rescales the timestamps. The picture keeps 
 and the frame rate is multiplied by the factor, so 30 fps becomes 240 fps. Many players and sites
 drop frames above 60 fps. For a file that plays the same everywhere, use exact mode, which keeps the
 source frame rate by dropping frames: `speed {"input": "sky.mov", "factor": 8, "audio": "none"}`.
+
+### Smooth slow motion and motion blur
+
+The source is a 30 fps clip of a skateboarder passing the camera.
+
+```
+render {"input": "skate.mov", "ops": [{"op": "trim", "start": 4, "end": 6},
+                                      {"op": "speed", "factor": 0.25, "audio": "none"},
+                                      {"op": "fps", "rate": 30, "method": "motion"},
+                                      {"op": "motion_blur", "shutter": 180}]}
+-> {"output": "skate.render.mp4", "duration": 8.0, "video": {"fps": 30.0, ...}}
+preview {"input": "skate.render.mp4", "start": 2, "end": 3, "count": 8}
+```
+
+- A `speed` op alone slows the clip by repeating frames, so at 0.25 each frame shows four times
+  and the motion stutters. The `fps` op with `"method": "motion"` fills the gaps with interpolated
+  frames instead.
+- The interpolated frames are sharp, which makes fast slow motion look like a strobe. The
+  `motion_blur` op adds the blur that a camera with a 180-degree shutter would have recorded.
+- Trim before the slow ops: interpolation is slow, and every op after `trim` works only on the kept
+  two seconds. Look for warping at the edges of the skateboarder, where interpolation is weakest.
+- To blur a 60 fps clip for a 24 fps edit, use `{"op": "motion_blur", "rate": 24}` alone; it
+  lowers the rate and blurs in one step.
 
 ### Reframe to 4:5 and slow only the ending
 

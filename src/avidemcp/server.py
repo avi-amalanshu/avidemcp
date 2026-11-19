@@ -33,8 +33,9 @@ syntax and when to use it. avidemcp://docs/EXAMPLES.md chains tools into finishe
 Inspect: probe (streams, fps, I-frame times), preview (contact sheet of any file).
 Encode: bake (any file to H.264 MP4), prepare (I/P-only MPEG-4 with I-frames where you choose).
 Edit: trim (keep a range), cut (remove one), speed, reverse; mode="copy" on trim/cut/speed skips
-re-encoding. render(ops) chains trim, cut, speed, reverse, crop and scale in one encode; concat
-joins clips, each with its own ops, and returns the junction times.
+re-encoding. render(ops) chains trim, cut, speed, reverse, crop, scale, fps (frame rate
+conversion) and motion_blur in one encode; concat joins clips, each with its own ops, and returns
+the junction times.
 Frame-level edits on a prepared file: drop_iframes, repeat_pframes (datamoshing; bake afterwards).
 """
 
@@ -317,7 +318,7 @@ async def concat(
     output: Out = None,
 ) -> dict[str, Any]:
     """Join clips end to end in ONE encode, like Avidemux's Append. Each clip first runs its own
-    ops (trim, cut, speed, reverse, crop, scale), then is fitted to width x height (scaled to
+    ops (trim, cut, speed, reverse, crop, scale, fps, motion_blur), then is fitted to width x height (scaled to
     cover, center-cropped; default: the first clip's size after its ops), the first clip's frame
     rate and 48 kHz stereo audio (silence for clips without). Returns `junctions`: the times where
     each later clip starts, i.e. where prepare(keyframes=[...]) should put the I-frames that a
@@ -336,6 +337,8 @@ async def render(input: str, ops: list[Op], ctx: Context, crf: Crf = 18, output:
     """Apply a chain of edits in ONE decode/encode pass, so no quality is lost between steps.
     ops run in order, each on the timeline the previous one produced, e.g.
     [{"op": "trim", "start": 1, "end": 5}, {"op": "speed", "factor": 0.5}, {"op": "reverse"}].
+    The output keeps the source frame rate unless an fps or motion_blur op sets another;
+    speed 0.25 then fps at the source rate with method "motion" gives smooth slow motion.
     reverse here buffers its frames in RAM: trim long clips first or use the reverse tool."""
     return await rendered(input, ops, crf, output, "render", ctx)
 

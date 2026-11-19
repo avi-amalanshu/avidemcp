@@ -29,7 +29,9 @@ speed {"input": "clip.mov", "factor": 0.5, "mode": "copy"}
 ## When and how
 
 - Slowing a nearly still shot to 0.5 reads as stillness rather than slow motion; it gives a quiet
-  moment more time. On moving footage the repeated frames show as a stutter.
+  moment more time. On moving footage the repeated frames show as a stutter. For smooth slow
+  motion, follow the `speed` op with an `fps` op that interpolates new frames, in `render`
+  ([1100-render.md](1100-render.md)).
 - Check `fps` with `probe` before planning slow motion. A clip whose header claims 120 fps may hold
   24, and slowing that to 0.25 shows only 6 new frames per second.
 - To change the speed of only part of a shot, use `concat` with the shot twice, the second copy

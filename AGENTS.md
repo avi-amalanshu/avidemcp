@@ -51,9 +51,9 @@ Output formats:
   packets.
 - `prepare` writes MPEG-4 Part 2 in MKV. `drop_iframes` and `repeat_pframes` write MKV; `bake`
   turns their output into MP4.
-- Re-encodes keep the source frame rate (`concat`: the first clip's), follow phone rotation, and
-  tone-map HDR to SDR. A frame rate is measured from the frame spacing when the header is more than
-  1.5x off.
+- Re-encodes keep the source frame rate (`concat`: the first clip's after its ops) unless an `fps`
+  or `motion_blur` op sets another. They follow phone rotation and tone-map HDR to SDR. A frame
+  rate is measured from the frame spacing when the header is more than 1.5x off.
 
 Results and errors:
 
@@ -82,14 +82,15 @@ matter.
 | `cut` | `cut(input, start, end, mode="exact", snap=True, crf=18)` | remove one range |
 | `speed` | `speed(input, factor, audio="pitch", mode="exact", crf=18)` | play faster or slower |
 | `reverse` | `reverse(input, chunk=None, crf=18)` | play backwards, any length |
-| `render` | `render(input, ops, crf=18)` | chain trim, cut, speed, reverse, crop and scale in one encode |
+| `render` | `render(input, ops, crf=18)` | chain trim, cut, speed, reverse, crop, scale, fps and motion_blur in one encode |
 | `concat` | `concat(clips=[{input, ops}], width=None, height=None, crf=18)` | join clips, each with its own ops; get the junction times |
 | `drop_iframes` | `drop_iframes(input, start=0, end=None, timing="keep")` | delete I-frames so later frames predict from the wrong picture |
 | `repeat_pframes` | `repeat_pframes(input, at, times=30, span=1, timing="keep")` | replay a P-frame so its motion builds up |
 
 Every tool also takes `output`. Ops for `render` and `concat` are objects such as
 `{"op": "trim", "start": 1, "end": 5}`, `{"op": "speed", "factor": 0.5}`, `{"op": "reverse"}`,
-`{"op": "crop", "width": 1080, "height": 1350}` and `{"op": "scale", "width": 720}`.
+`{"op": "crop", "width": 1080, "height": 1350}`, `{"op": "scale", "width": 720}`,
+`{"op": "fps", "rate": 24, "method": "motion"}` and `{"op": "motion_blur", "shutter": 180}`.
 
 Chaining: prefer one `render` or `concat` to several single-edit calls, since each re-encode loses
 a little quality. The frame-level tools need a `prepare`d input and usually end with `bake`.
@@ -113,7 +114,7 @@ a little quality. The frame-level tools need a `prepare`d input and usually end 
       - `1011` [reverse](docs/1011-reverse.md): play a clip backwards, video and audio, working in chunks so clips of any length fit in memory.
   - `11` Chained and frame-level edits.
     - `110` Many edits in one encode.
-      - `1100` [render](docs/1100-render.md): run a chain of ops (trim, cut, speed, reverse, crop, scale) on one file in a single decode and encode.
+      - `1100` [render](docs/1100-render.md): run a chain of ops (trim, cut, speed, reverse, crop, scale, fps, motion_blur) on one file in a single decode and encode.
       - `1101` [concat](docs/1101-concat.md): join clips end to end in one encode, each clip running its own ops first; returns the junction times.
     - `111` Frame-level edits: rearrange compressed frames without decoding.
       - `1110` [drop_iframes](docs/1110-drop-iframes.md): delete the I-frames shown in [start, end) without decoding; the P-frames after each one then predict from the wrong picture.
